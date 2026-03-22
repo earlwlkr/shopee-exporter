@@ -1,32 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
-
-const BASE_URLS: Record<string, string> = {
-  test: 'https://partner.test-stable.shopeemobile.com',
-  live: 'https://partner.shopeemobile.com',
-};
-
-function generateSignature(
-  partnerId: number,
-  partnerKey: string,
-  path: string,
-  timestamp: number,
-  accessToken: string,
-  shopId: number,
-): string {
-  const baseStr = `${partnerId}${path}${timestamp}${accessToken}${shopId}`;
-  return crypto.createHmac('sha256', partnerKey).update(baseStr).digest('hex');
-}
-
-function toUnixTs(dateStr: string, endOfDay = false): number {
-  const d = new Date(dateStr);
-  if (endOfDay) {
-    d.setUTCHours(23, 59, 59, 999);
-  } else {
-    d.setUTCHours(0, 0, 0, 0);
-  }
-  return Math.floor(d.getTime() / 1000);
-}
+import { generateSignature, toUnixTs, BASE_URLS } from '@/lib/shopee';
 
 interface ShopeeOrder {
   order_sn: string;
@@ -126,7 +99,6 @@ async function getOrderDetail(
 function ordersToCSV(orders: ShopeeOrder[]): string {
   if (orders.length === 0) return 'No orders found';
 
-  // Collect all unique keys
   const keys = new Set<string>();
   orders.forEach(o => Object.keys(o).forEach(k => keys.add(k)));
   const headers = Array.from(keys);
@@ -174,7 +146,6 @@ export async function POST(req: NextRequest) {
     );
 
     let detailedOrders: ShopeeOrder[] = [];
-    // Fetch details in batches of 50
     for (let i = 0; i < orderList.length; i += 50) {
       const batch = orderList.slice(i, i + 50).map(o => o.order_sn);
       const details = await getOrderDetail(

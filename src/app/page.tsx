@@ -1,12 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { buildAuthUrl } from '@/lib/shopee';
 
 function todayISO(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-export default function Home() {
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const [partnerId, setPartnerId] = useState('');
   const [partnerKey, setPartnerKey] = useState('');
   const [shopId, setShopId] = useState('');
@@ -17,6 +22,38 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [log, setLog] = useState('');
+
+  // Auto-populate Shop ID and Access Token from URL params after OAuth redirect.
+  useEffect(() => {
+    const urlShopId = searchParams.get('shop_id');
+    const urlAccessToken = searchParams.get('access_token');
+    if (urlShopId) setShopId(urlShopId);
+    if (urlAccessToken) setAccessToken(urlAccessToken);
+    if (urlShopId || urlAccessToken) {
+      // Clean up the URL so credentials are not left in the browser history.
+      router.replace('/');
+      setLog('Shop connected successfully. Shop ID and Access Token have been populated.');
+    }
+  }, [searchParams, router]);
+
+  function handleConnectShop() {
+    if (!partnerId || !partnerKey) {
+      setError('Please enter your Partner ID and Partner Key before connecting.');
+      return;
+    }
+    setError('');
+    // Build the callback URL, forwarding partner credentials and env so the
+    // server-side callback handler can perform the token exchange.
+    const callbackBase = `${window.location.origin}/api/auth/callback`;
+    const callbackParams = new URLSearchParams({
+      partner_id: partnerId,
+      partner_key: partnerKey,
+      env,
+    });
+    const redirectUrl = `${callbackBase}?${callbackParams.toString()}`;
+    const authUrl = buildAuthUrl(env, Number(partnerId), partnerKey, redirectUrl);
+    window.location.href = authUrl;
+  }
 
   async function handleExport() {
     setError('');
@@ -81,27 +118,6 @@ export default function Home() {
             />
           </label>
 
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Shop ID
-            <input
-              className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-              placeholder="e.g. 7654321"
-              value={shopId}
-              onChange={e => setShopId(e.target.value)}
-            />
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Access Token
-            <input
-              type="password"
-              className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-              placeholder="OAuth access token"
-              value={accessToken}
-              onChange={e => setAccessToken(e.target.value)}
-            />
-          </label>
-
           <div className="flex flex-col gap-1 text-sm font-medium">
             Environment
             <div className="flex gap-3 mt-1">
@@ -120,6 +136,34 @@ export default function Home() {
               ))}
             </div>
           </div>
+
+          <button
+            onClick={handleConnectShop}
+            className="w-full border-2 border-orange-500 text-orange-600 font-semibold rounded-xl py-2.5 hover:bg-orange-50 transition-colors text-sm"
+          >
+            Connect Shop via OAuth
+          </button>
+
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Shop ID
+            <input
+              className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+              placeholder="Auto-filled after connecting, or enter manually"
+              value={shopId}
+              onChange={e => setShopId(e.target.value)}
+            />
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Access Token
+            <input
+              type="password"
+              className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+              placeholder="Auto-filled after connecting, or enter manually"
+              value={accessToken}
+              onChange={e => setAccessToken(e.target.value)}
+            />
+          </label>
         </div>
       </section>
 
@@ -166,5 +210,13 @@ export default function Home() {
         {loading ? 'Exporting…' : 'Export to CSV'}
       </button>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="max-w-2xl mx-auto py-12 px-4 text-gray-500">Loading…</div>}>
+      <DashboardContent />
+    </Suspense>
   );
 }
